@@ -18,6 +18,10 @@ it under the terms of the one of two licenses as you choose:
 
 
 */
+
+#include "demosaic.h"
+#include "simpletiff.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -28,6 +32,7 @@ it under the terms of the one of two licenses as you choose:
 #endif
 
 #include <libraw.h>
+#include <cassert>
 
 #ifdef WIN32
 #define snprintf _snprintf
@@ -110,6 +115,57 @@ int main(int ac, char *av[])
             fprintf(stderr, "Cannot unpack %s: %s\n", av[i], libraw_strerror(ret));
             continue;
         }
+
+
+        uint16_t width = RawProcessor.imgdata.rawdata.sizes.raw_width;
+        uint16_t height = RawProcessor.imgdata.rawdata.sizes.raw_height;
+
+        halide_buffer_t input = {};
+        input.host = (uint8_t*)RawProcessor.imgdata.rawdata.raw_image;
+        input.type = halide_type_t(halide_type_uint, 16);
+        input.dimensions = 2;
+        halide_dimension_t dims[2] = {};
+        dims[1].min = 1;
+        dims[0].extent = width;
+        dims[1].extent = height - 2;
+        dims[0].stride = 1;
+        dims[1].stride = width;
+        input.dim = dims;
+
+        std::unique_ptr<int16_t[]> outputBuf(new int16_t[width*height*3]);
+        halide_buffer_t output = {};
+        output.host = (uint8_t*)outputBuf.get();
+        output.type = halide_type_t(halide_type_int, 16);
+        output.dimensions = 3;
+        halide_dimension_t odims[3] = {};
+        odims[0].extent = width;
+        odims[1].extent = height;
+        odims[2].extent = 3;
+        odims[0].stride = 3;
+        odims[1].stride = width;
+        odims[2].stride = 1;
+        output.dim = odims;
+
+        int res = render(&input, &output);
+        assert(!res);
+        // @mem(input.host, UINT16, 1, width, height, width * 2)
+        // @mem(output.host, INT16, 3, width, height, width * 2)
+
+        int min = 0, max = 0;
+        for (uint32_t i = 0; i < width*height * 3u; ++i)
+        {
+            if (outputBuf[i] < min)
+                min = outputBuf[i];
+            if (outputBuf[i] > max)
+                max = outputBuf[i];
+            outputBuf[i] += 150;
+        }
+        printf("min %d max %d\n", min, max);
+        //lodepng_encode_file("out.png", (uint8_t*)outputBuf.get(), width, height, LCT_RGB, 16);
+		toTIFF("out.tif", outputBuf.get(), width, height, 3);
+
+        return 0;
+
         RawProcessor.raw2image();
         if (black_subtraction)
         {

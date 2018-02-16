@@ -20,4 +20,5 @@ set_target_properties(libraw PROPERTIES
 # TODO: INTERFACE_SYSTEM_INCLUDE_DIRECTORIES not working in VS
 
 add_executable(librawtest main.cpp)
-target_link_libraries(librawtest libraw)
+target_compile_options(librawtest PRIVATE -wd4996 -wd4251)
+target_link_libraries(librawtest libraw ${CMAKE_CURRENT_SOURCE_DIR}/demosaic.obj)
